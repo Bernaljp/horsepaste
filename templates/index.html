@@ -105,7 +105,7 @@
 
         /* ── Card ── */
         .card-wrap {
-            aspect-ratio: 3 / 2;
+            aspect-ratio: 380 / 355;
             perspective: 700px;
             cursor: pointer;
         }
@@ -210,7 +210,26 @@
         #end-turn-btn { background: #2d6a4f; color: #fff; }
         #spymaster-btn { background: #6d3b8e; color: #fff; }
         #spymaster-btn.active { background: #9b59b6; }
+        #replace-btn { background: #b5530a; color: #fff; }
+        #replace-btn.active { background: #e67e22; }
         #new-game-btn { background: var(--surface); color: var(--text); border: 1px solid rgba(255,255,255,0.15); }
+
+        /* Replace mode: show swap cursor + dim overlay on unrevealed cards */
+        body.replace-mode .card-wrap:not(.revealed) { cursor: crosshair; }
+        body.replace-mode .card-wrap:not(.revealed) .card-front::before {
+            content: '↺';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(20px, 3vw, 32px);
+            color: rgba(255,255,255,0.85);
+            background: rgba(0,0,0,0.35);
+            z-index: 1;
+            border-radius: 8px;
+            pointer-events: none;
+        }
 
         /* ── Game over modal ── */
         #game-over-modal {
@@ -285,6 +304,7 @@
     <div id="controls">
         <button id="end-turn-btn" onclick="endTurn()">End Turn</button>
         <button id="spymaster-btn" onclick="toggleSpymaster()">Spymaster</button>
+        <button id="replace-btn" onclick="toggleReplace()">Replace Images</button>
         <button id="new-game-btn" onclick="newGame()">New Game</button>
     </div>
 
@@ -302,6 +322,7 @@
         const socket = io();
         let currentState = null;
         let isSpymaster = false;
+        let isReplaceMode = false;
 
         // ── Socket events ──────────────────────────────────────────────────
         socket.on('connect', () => {
@@ -351,6 +372,17 @@
         function renderControls(state) {
             const endBtn = document.getElementById('end-turn-btn');
             endBtn.disabled = !!(state.game_over || isSpymaster);
+
+            const gameStarted = state.cards && state.cards.some(c => c.revealed);
+            const replaceBtn = document.getElementById('replace-btn');
+            replaceBtn.disabled = !!(state.game_over || gameStarted);
+            // Auto-exit replace mode once the game has started
+            if ((state.game_over || gameStarted) && isReplaceMode) {
+                isReplaceMode = false;
+                document.body.classList.remove('replace-mode');
+                replaceBtn.classList.remove('active');
+                replaceBtn.textContent = 'Replace Images';
+            }
         }
 
         function renderModal(state) {
@@ -376,6 +408,7 @@
                 wrap.className = 'card-wrap' + (card.revealed ? ' revealed' : '');
                 wrap.dataset.id = card.id;
                 wrap.dataset.color = card.color;
+                wrap.dataset.image = card.image;
 
                 const inner = document.createElement('div');
                 inner.className = 'card-inner';
@@ -408,6 +441,16 @@
                 if (card.revealed && !wrap.classList.contains('revealed')) {
                     wrap.classList.add('revealed');
                 }
+                // Update image if it was swapped via replace_card
+                if (wrap.dataset.image !== card.image) {
+                    wrap.dataset.image = card.image;
+                    const img = wrap.querySelector('img');
+                    if (img) {
+                        img.style.display = '';
+                        wrap.querySelector('.card-front').style.backgroundColor = '';
+                        img.src = '/static/images/' + card.image;
+                    }
+                }
             });
             // Update clickability
             const gameOver = state.game_over;
@@ -418,12 +461,17 @@
 
         // ── Card click (event delegation) ──────────────────────────────────
         document.getElementById('card-grid').addEventListener('click', (e) => {
-            if (isSpymaster) return;
             if (currentState && currentState.game_over) return;
 
             const wrap = e.target.closest('.card-wrap');
             if (!wrap || wrap.classList.contains('revealed')) return;
 
+            if (isReplaceMode) {
+                socket.emit('replace_card', { card_id: parseInt(wrap.dataset.id) });
+                return;
+            }
+
+            if (isSpymaster) return;
             socket.emit('reveal_card', { card_id: parseInt(wrap.dataset.id) });
         });
 
@@ -443,11 +491,23 @@
             if (currentState) renderControls(currentState);
         }
 
+        function toggleReplace() {
+            isReplaceMode = !isReplaceMode;
+            document.body.classList.toggle('replace-mode', isReplaceMode);
+            const btn = document.getElementById('replace-btn');
+            btn.textContent = isReplaceMode ? 'Replace Images ✓' : 'Replace Images';
+            btn.classList.toggle('active', isReplaceMode);
+        }
+
         function newGame() {
             socket.emit('new_game');
             document.getElementById('game-over-modal').classList.remove('visible');
-            // Reset to first render on next state_update
+            // Reset local state for fresh render
             currentState = null;
+            isReplaceMode = false;
+            document.body.classList.remove('replace-mode');
+            document.getElementById('replace-btn').classList.remove('active');
+            document.getElementById('replace-btn').textContent = 'Replace Images';
         }
 
         // ── Connection status ──────────────────────────────────────────────

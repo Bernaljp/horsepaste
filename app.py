@@ -11,6 +11,7 @@ IMAGE_DIR = os.path.join(app.static_folder, 'images')
 VALID_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 GAME_STATE = {}
+AVAILABLE_IMAGES = []  # pool of images not currently on the board
 
 
 def opposite(team):
@@ -40,6 +41,10 @@ def make_new_game():
         {'id': i, 'image': selected[i], 'color': colors[i], 'revealed': False}
         for i in range(25)
     ]
+
+    # Rebuild the pool of unused images (mutate in place so global ref stays valid)
+    selected_set = set(selected)
+    AVAILABLE_IMAGES[:] = [f for f in all_images if f not in selected_set]
 
     return {
         'cards': cards,
@@ -125,6 +130,31 @@ def handle_end_turn():
     if GAME_STATE.get('game_over'):
         return
     GAME_STATE['current_turn'] = opposite(GAME_STATE['current_turn'])
+    socketio.emit('state_update', GAME_STATE)
+
+
+@socketio.on('replace_card')
+def handle_replace_card(data):
+    # Only allowed before any card has been revealed
+    if GAME_STATE.get('game_over'):
+        return
+    if any(c['revealed'] for c in GAME_STATE['cards']):
+        return
+
+    card_id = data.get('card_id')
+    card = next((c for c in GAME_STATE['cards'] if c['id'] == card_id), None)
+    if card is None or card['revealed']:
+        return
+
+    if not AVAILABLE_IMAGES:
+        emit('error', {'message': 'No more images available to swap in.'})
+        return
+
+    new_image = random.choice(AVAILABLE_IMAGES)
+    AVAILABLE_IMAGES.remove(new_image)
+    AVAILABLE_IMAGES.append(card['image'])  # return old image to pool
+    card['image'] = new_image
+
     socketio.emit('state_update', GAME_STATE)
 
 
