@@ -212,6 +212,8 @@
         #spymaster-btn.active { background: #9b59b6; }
         #replace-btn { background: #b5530a; color: #fff; }
         #replace-btn.active { background: #e67e22; }
+        #no-bomb-btn { background: #3a3a3a; color: #ccc; }
+        #no-bomb-btn.active { background: #7a5c00; color: #f4c430; border: 1px solid #f4c43066; }
         #new-game-btn { background: var(--surface); color: var(--text); border: 1px solid rgba(255,255,255,0.15); }
 
         /* Replace mode: show swap cursor + dim overlay on unrevealed cards */
@@ -305,6 +307,7 @@
         <button id="end-turn-btn" onclick="endTurn()">End Turn</button>
         <button id="spymaster-btn" onclick="toggleSpymaster()">Spymaster</button>
         <button id="replace-btn" onclick="toggleReplace()">Replace Images</button>
+        <button id="no-bomb-btn" onclick="toggleNoBomb()">☠ Bomb: On</button>
         <button id="new-game-btn" onclick="newGame()">New Game</button>
     </div>
 
@@ -383,6 +386,12 @@
                 replaceBtn.classList.remove('active');
                 replaceBtn.textContent = 'Replace Images';
             }
+
+            // Sync no-bomb button with server state
+            const noBombBtn = document.getElementById('no-bomb-btn');
+            const noBomb = !!state.no_bomb;
+            noBombBtn.textContent = noBomb ? '☠ Bomb: Off' : '☠ Bomb: On';
+            noBombBtn.classList.toggle('active', noBomb);
         }
 
         function renderModal(state) {
@@ -489,6 +498,10 @@
             btn.textContent = isSpymaster ? 'Spymaster ✓' : 'Spymaster';
             btn.classList.toggle('active', isSpymaster);
             if (currentState) renderControls(currentState);
+        }
+
+        function toggleNoBomb() {
+            socket.emit('toggle_no_bomb');
         }
 
         function toggleReplace() {

@@ -12,6 +12,7 @@ VALID_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 GAME_STATE = {}
 AVAILABLE_IMAGES = []  # pool of images not currently on the board
+NO_BOMB = False        # persistent setting: replace black card with neutral
 
 
 def opposite(team):
@@ -34,7 +35,12 @@ def make_new_game():
         )
 
     selected = random.sample(all_images, 25)
-    colors = ['red'] * 9 + ['blue'] * 8 + ['neutral'] * 7 + ['black'] * 1
+
+    first = random.choice(['red', 'blue'])
+    second = opposite(first)
+    neutral_count = 8 if NO_BOMB else 7
+    bomb = [] if NO_BOMB else ['black']
+    colors = [first] * 9 + [second] * 8 + ['neutral'] * neutral_count + bomb
     random.shuffle(colors)
 
     cards = [
@@ -48,11 +54,12 @@ def make_new_game():
 
     return {
         'cards': cards,
-        'current_turn': 'red',
+        'current_turn': first,
         'game_over': False,
         'winner': None,
-        'red_remaining': 9,
-        'blue_remaining': 8,
+        'red_remaining': 9 if first == 'red' else 8,
+        'blue_remaining': 9 if first == 'blue' else 8,
+        'no_bomb': NO_BOMB,
     }
 
 
@@ -67,6 +74,7 @@ except ValueError as e:
         'winner': None,
         'red_remaining': 9,
         'blue_remaining': 8,
+        'no_bomb': NO_BOMB,
         'error': str(e),
     }
 
@@ -155,6 +163,14 @@ def handle_replace_card(data):
     AVAILABLE_IMAGES.append(card['image'])  # return old image to pool
     card['image'] = new_image
 
+    socketio.emit('state_update', GAME_STATE)
+
+
+@socketio.on('toggle_no_bomb')
+def handle_toggle_no_bomb():
+    global NO_BOMB
+    NO_BOMB = not NO_BOMB
+    GAME_STATE['no_bomb'] = NO_BOMB
     socketio.emit('state_update', GAME_STATE)
 
 
